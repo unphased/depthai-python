@@ -11,53 +11,60 @@ fps = 30
 # The disparity is computed at this resolution, then upscaled to RGB resolution
 monoResolution = dai.MonoCameraProperties.SensorResolution.THE_400_P
 
-# Create pipeline
-pipeline = dai.Pipeline()
-queueNames = []
-
-# Define sources and outputs
-camRgb = pipeline.create(dai.node.ColorCamera)
-left = pipeline.create(dai.node.MonoCamera)
-right = pipeline.create(dai.node.MonoCamera)
-stereo = pipeline.create(dai.node.StereoDepth)
-
-rgbOut = pipeline.create(dai.node.XLinkOut)
-depthOut = pipeline.create(dai.node.XLinkOut)
-
-rgbOut.setStreamName("rgb")
-queueNames.append("rgb")
-depthOut.setStreamName("depth")
-queueNames.append("depth")
-
-#Properties
-camRgb.setBoardSocket(dai.CameraBoardSocket.RGB)
-camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-camRgb.setFps(fps)
-if downscaleColor: camRgb.setIspScale(2, 3)
 # For now, RGB needs fixed focus to properly align with depth.
-# This value was used during calibration
-camRgb.initialControl.setManualFocus(130)
+# The value used during calibration should be used here
+def getPipelineAndMaxDisparity(rgbLensPosition):
+    # Create pipeline
+    pipeline = dai.Pipeline()
 
-left.setResolution(monoResolution)
-left.setBoardSocket(dai.CameraBoardSocket.LEFT)
-left.setFps(fps)
-right.setResolution(monoResolution)
-right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
-right.setFps(fps)
+    # Define sources and outputs
+    camRgb = pipeline.create(dai.node.ColorCamera)
+    left = pipeline.create(dai.node.MonoCamera)
+    right = pipeline.create(dai.node.MonoCamera)
+    stereo = pipeline.create(dai.node.StereoDepth)
 
-stereo.initialConfig.setConfidenceThreshold(245)
-# LR-check is required for depth alignment
-stereo.setLeftRightCheck(True)
-stereo.setDepthAlign(dai.CameraBoardSocket.RGB)
+    rgbOut = pipeline.create(dai.node.XLinkOut)
+    depthOut = pipeline.create(dai.node.XLinkOut)
 
-# Linking
-camRgb.isp.link(rgbOut.input)
-left.out.link(stereo.left)
-right.out.link(stereo.right)
-stereo.disparity.link(depthOut.input)
+    rgbOut.setStreamName("rgb")
+    depthOut.setStreamName("depth")
+
+    #Properties
+    camRgb.setBoardSocket(dai.CameraBoardSocket.RGB)
+    camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+    camRgb.setFps(fps)
+    if downscaleColor: camRgb.setIspScale(2, 3)
+    camRgb.initialControl.setManualFocus(rgbLensPosition)
+
+    left.setResolution(monoResolution)
+    left.setBoardSocket(dai.CameraBoardSocket.LEFT)
+    left.setFps(fps)
+    right.setResolution(monoResolution)
+    right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+    right.setFps(fps)
+
+    stereo.initialConfig.setConfidenceThreshold(245)
+    # LR-check is required for depth alignment
+    stereo.setLeftRightCheck(True)
+    stereo.setDepthAlign(dai.CameraBoardSocket.RGB)
+
+    # Linking
+    camRgb.isp.link(rgbOut.input)
+    left.out.link(stereo.left)
+    right.out.link(stereo.right)
+    stereo.disparity.link(depthOut.input)
+
+    maxDisparity = stereo.initialConfig.getMaxDisparity()
+    return pipeline, maxDisparity
 
 # Connect to device and start pipeline
-with dai.Device(pipeline) as device:
+with dai.Device() as device:
+    lensPos = device.readCalibration().getLensPosition(dai.CameraBoardSocket.RGB)
+    print("RGB calibration lens position:", lensPos)
+    if lensPos == 0: lensPos = 130  # TODO better checks / default handling
+    pipeline, maxDisparity = getPipelineAndMaxDisparity(lensPos)
+
+    device.startPipeline(pipeline)
 
     device.getOutputQueue(name="rgb",   maxSize=4, blocking=False)
     device.getOutputQueue(name="depth", maxSize=4, blocking=False)
@@ -82,7 +89,6 @@ with dai.Device(pipeline) as device:
 
         if latestPacket["depth"] is not None:
             frameDepth = latestPacket["depth"].getFrame()
-            maxDisparity = stereo.initialConfig.getMaxDisparity()
             # Optional, extend range 0..95 -> 0..255, for a better visualisation
             if 1: frameDepth = (frameDepth * 255. / maxDisparity).astype(np.uint8)
             # Optional, apply false colorization
