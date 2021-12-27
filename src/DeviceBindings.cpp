@@ -273,6 +273,7 @@ void DeviceBindings::bind(pybind11::module& m, void* pCallstack){
         .def("flashCalibration", [](DeviceBase& d, CalibrationHandler calibrationDataHandler) { py::gil_scoped_release release; return d.flashCalibration(calibrationDataHandler); }, py::arg("calibrationDataHandler"), DOC(dai, DeviceBase, flashCalibration))
         .def("setXLinkChunkSize", [](DeviceBase& d, int s) { py::gil_scoped_release release; d.setXLinkChunkSize(s); }, py::arg("sizeBytes"), DOC(dai, DeviceBase, setXLinkChunkSize))
         .def("getXLinkChunkSize", [](DeviceBase& d) { py::gil_scoped_release release; return d.getXLinkChunkSize(); }, DOC(dai, DeviceBase, getXLinkChunkSize))
+        .def("setTimesync", [](DeviceBase& d, std::chrono::milliseconds p, int s, bool r) { py::gil_scoped_release release; return d.setTimesync(p,s,r); }, DOC(dai, DeviceBase, setTimesync))
     ;
 
 
