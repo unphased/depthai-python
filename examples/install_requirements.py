@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+print("=======================================================================")
+print("    This branch (oak-d-pro) is deprecated! Please switch for now to:")
+print("                 oak-d-pro_develop")
+exit(1)
+
 import platform
 import sys, os, subprocess
 import argparse
