@@ -53,6 +53,7 @@ camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_13_MP)
 camRgb.setVideoSize(4192, 3120)
 camRgb.setPreviewSize(640, 480)
 stillEncoder.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.MJPEG)
+stillEncoder.setQuality(100)
 
 # Linking
 camRgb.still.link(stillEncoder.input)
