@@ -34,34 +34,31 @@ pipeline = dai.Pipeline()
 
 # Define sources and outputs
 camRgb = pipeline.create(dai.node.ColorCamera)
-videoEncoder = pipeline.create(dai.node.VideoEncoder)
 stillEncoder = pipeline.create(dai.node.VideoEncoder)
 
 controlIn = pipeline.create(dai.node.XLinkIn)
 configIn = pipeline.create(dai.node.XLinkIn)
-videoMjpegOut = pipeline.create(dai.node.XLinkOut)
 stillMjpegOut = pipeline.create(dai.node.XLinkOut)
 previewOut = pipeline.create(dai.node.XLinkOut)
 
+controlIn.setMaxDataSize(1024)
+configIn.setMaxDataSize(1024)
 controlIn.setStreamName('control')
 configIn.setStreamName('config')
-videoMjpegOut.setStreamName('video')
 stillMjpegOut.setStreamName('still')
 previewOut.setStreamName('preview')
 
 # Properties
-camRgb.setVideoSize(640, 360)
-camRgb.setPreviewSize(300, 300)
-videoEncoder.setDefaultProfilePreset(camRgb.getFps(), dai.VideoEncoderProperties.Profile.MJPEG)
+camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_13_MP)
+camRgb.setVideoSize(4192, 3120)
+camRgb.setPreviewSize(640, 480)
 stillEncoder.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.MJPEG)
 
 # Linking
-camRgb.video.link(videoEncoder.input)
 camRgb.still.link(stillEncoder.input)
 camRgb.preview.link(previewOut.input)
 controlIn.out.link(camRgb.inputControl)
 configIn.out.link(camRgb.inputConfig)
-videoEncoder.bitstream.link(videoMjpegOut.input)
 stillEncoder.bitstream.link(stillMjpegOut.input)
 
 # Connect to device and start pipeline
@@ -71,7 +68,6 @@ with dai.Device(pipeline) as device:
     controlQueue = device.getInputQueue('control')
     configQueue = device.getInputQueue('config')
     previewQueue = device.getOutputQueue('preview')
-    videoQueue = device.getOutputQueue('video')
     stillQueue = device.getOutputQueue('still')
 
     # Max cropX & cropY
@@ -105,25 +101,22 @@ with dai.Device(pipeline) as device:
         for previewFrame in previewFrames:
             cv2.imshow('preview', previewFrame.getData().reshape(previewFrame.getHeight(), previewFrame.getWidth(), 3))
 
-        videoFrames = videoQueue.tryGetAll()
-        for videoFrame in videoFrames:
-            # Decode JPEG
-            frame = cv2.imdecode(videoFrame.getData(), cv2.IMREAD_UNCHANGED)
-            # Display
-            cv2.imshow('video', frame)
-
-            # Send new cfg to camera
-            if sendCamConfig:
-                cfg = dai.ImageManipConfig()
-                cfg.setCropRect(cropX, cropY, 0, 0)
-                configQueue.send(cfg)
-                print('Sending new crop - x: ', cropX, ' y: ', cropY)
-                sendCamConfig = False
+        # Send new cfg to camera
+        if sendCamConfig:
+            cfg = dai.ImageManipConfig()
+            cfg.setCropRect(cropX, cropY, 0, 0)
+            configQueue.send(cfg)
+            print('Sending new crop - x: ', cropX, ' y: ', cropY)
+            sendCamConfig = False
 
         stillFrames = stillQueue.tryGetAll()
         for stillFrame in stillFrames:
             # Decode JPEG
-            frame = cv2.imdecode(stillFrame.getData(), cv2.IMREAD_UNCHANGED)
+            data = stillFrame.getData()
+            filename = 'capture.jpg'
+            data.tofile(filename)
+            print("Saved to:", filename)
+            frame = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
             # Display
             cv2.imshow('still', frame)
 
