@@ -17,11 +17,12 @@ To go back to auto controls:
 
 import depthai as dai
 import cv2
+import time
 
 # Step size ('W','A','S','D' controls)
 STEP_SIZE = 8
 # Manual exposure/focus/white-balance set step
-EXP_STEP = 500  # us
+EXP_STEP = 5000  # us
 ISO_STEP = 50
 LENS_STEP = 3
 WB_STEP = 200
@@ -52,6 +53,7 @@ previewOut.setStreamName('preview')
 camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_13_MP)
 camRgb.setVideoSize(4192, 3120)
 camRgb.setPreviewSize(640, 480)
+camRgb.setFps(0.1)
 stillEncoder.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.MJPEG)
 stillEncoder.setQuality(100)
 
@@ -87,7 +89,7 @@ with dai.Device(pipeline) as device:
 
     expTime = 20000
     expMin = 1
-    expMax = 33000
+    expMax = 330000
 
     sensIso = 800
     sensMin = 100
@@ -97,9 +99,20 @@ with dai.Device(pipeline) as device:
     wbMin = 1000
     wbMax = 12000
 
+    count = 0
+    prevTime = time.monotonic()
     while True:
         previewFrames = previewQueue.tryGetAll()
         for previewFrame in previewFrames:
+            count += 1
+            tnow = time.monotonic()
+            tdiff = tnow - prevTime
+            if tdiff >= 1:
+                fps = count / tdiff
+                count = 0
+                prevTime = tnow
+                print(fps)
+
             cv2.imshow('preview', previewFrame.getData().reshape(previewFrame.getHeight(), previewFrame.getWidth(), 3))
 
         # Send new cfg to camera
