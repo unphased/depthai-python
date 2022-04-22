@@ -46,7 +46,9 @@ macOS
 
 Close and re-open the terminal window after this command.
 
-The script also works on M1 Macs, Homebrew being installed under Rosetta 2, as some Python packages are still missing native M1 support.  In case you already have Homebrew installed natively and things don't work, see `here <https://github.com/luxonis/depthai/issues/299#issuecomment-757110966>`__ for some additional troubleshooting steps.
+The script also works on M1 Macs, Homebrew being installed under Rosetta 2, as some Python packages are still missing native M1
+support.  In case you already have Homebrew installed natively and things don't work, see `here <https://github.com/luxonis/depthai/issues/299#issuecomment-757110966>`__
+for some additional troubleshooting steps.
 
 Note that if the video streaming window does not appear consider running the
 following:
@@ -56,6 +58,52 @@ following:
     python3 -m pip install opencv-python --force-reinstall --no-cache-dir
 
 See the `Video preview window fails to appear on macOS <https://discuss.luxonis.com/d/95-video-preview-window-fails-to-appear-on-macos>`_ thread on our forum for more information.
+
+M1 Mac build wheels natively
+----------------------------
+
+In order to run DepthAI natively on M1 Mac, you currently need to build the wheels locally. We will add pre-building M1 wheels
+in Q2 of 2022, so this won't be needed anymore.
+
+This tutorial was provided by whab and tested on a MacBookPro M1 Pro running macOS Monterey 12.1 with a OAK-D-Lite.
+
+.. code-block:: bash
+
+  # Install native M1 version of brew
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+  echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+
+  # Install conda to create virtual environments for Python
+  brew install --cask miniconda
+  conda init zsh
+
+  # Close and re-open a Terminal window
+
+  # Install DepthAI by building a M1 wheel (inside ~/DepthAI/)
+  conda create --name DepthAIEnv39 python=3.9
+  conda activate DepthAIEnv39
+  python3 -m pip install -U pip
+  brew update
+  brew install cmake libusb
+  cd ~; mkdir DepthAI; cd DepthAI
+  git clone --recursive  https://github.com/luxonis/depthai-python.git
+  cd depthai-python
+  mkdir build && cd build
+  # Build depthai-python
+  cmake ..
+  cmake --build . --parallel
+  cd ..
+  python3 -m pip wheel . -w wheelhouse
+  pip install wheelhouse/depthai-*
+
+  # Test DepthAI with a OAK plugged to your new M1 Mac
+  cd examples
+  nano install_requirements.py
+  #   Remove code of block (3 lines) starting with: if thisPlatform == "arm64" and platform.system() == "Darwin":
+  #   Remove code of block (48 lines) starting with: if not args.skip_depthai:
+  python3 install_requirements.py
+  python3 ColorCamera/rgb_preview.py
 
 Ubuntu
 ******
@@ -241,7 +289,7 @@ Kernel Virtual Machine
 To access the OAK-D camera in the `Kernel Virtual Machine <https://www.linux-kvm.org/page/Main_Page>`__, there is a need to attach and detach USB 
 devices on the fly when the host machine detects changes in the USB bus.
 
-OAK-D camera changes the USB device type when it is used by DepthAI API. This happens in backgound when the camera is used natively.
+OAK-D camera changes the USB device type when it is used by DepthAI API. This happens in background when the camera is used natively.
 But when the camera is used in a virtual environment the situation is different.
 
 On your host machine, use the following code:
@@ -292,7 +340,7 @@ Note that when the device is disconnected from the USB bus, some udev environmen
 that is why you need to use :code:`PRODUCT` environmental variable to identify which device has been disconnected.
 
 The virtual machine where DepthAI API application is running should have defined a udev rules that identify the OAK-D camera.
-The udev rule is decribed `here <https://docs.luxonis.com/en/latest/pages/faq/#does-depthai-work-on-the-nvidia-jetson-series>`__
+The udev rule is described `here <https://docs.luxonis.com/en/latest/pages/faq/#does-depthai-work-on-the-nvidia-jetson-series>`__
 
 Solution provided by `Manuel Segarra-Abad <https://github.com/maseabunikie>`__
 

@@ -22,6 +22,8 @@
 #include "depthai/pipeline/datatype/EdgeDetectorConfig.hpp"
 #include "depthai/pipeline/datatype/TrackedFeatures.hpp"
 #include "depthai/pipeline/datatype/FeatureTrackerConfig.hpp"
+#include "depthai/pipeline/datatype/AprilTags.hpp"
+#include "depthai/pipeline/datatype/AprilTagConfig.hpp"
 
 // depthai-shared
 #include "depthai-shared/datatype/RawBuffer.hpp"
@@ -40,6 +42,8 @@
 #include "depthai-shared/datatype/RawEdgeDetectorConfig.hpp"
 #include "depthai-shared/datatype/RawFeatureTrackerConfig.hpp"
 #include "depthai-shared/datatype/RawTrackedFeatures.hpp"
+#include "depthai-shared/datatype/RawAprilTagConfig.hpp"
+#include "depthai-shared/datatype/RawAprilTags.hpp"
 
 //pybind
 #include <pybind11/chrono.h>
@@ -113,6 +117,7 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     py::enum_<MedianFilter> medianFilter(m, "MedianFilter", DOC(dai, MedianFilter));
     py::class_<RawStereoDepthConfig::AlgorithmControl> algorithmControl(rawStereoDepthConfig, "AlgorithmControl", DOC(dai, RawStereoDepthConfig, AlgorithmControl));
     py::enum_<RawStereoDepthConfig::AlgorithmControl::DepthAlign> depthAlign(algorithmControl, "DepthAlign", DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthAlign));
+    py::enum_<RawStereoDepthConfig::AlgorithmControl::DepthUnit> depthUnit(algorithmControl, "DepthUnit", DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit));
     py::class_<RawStereoDepthConfig::PostProcessing> postProcessing(rawStereoDepthConfig, "PostProcessing", DOC(dai, RawStereoDepthConfig, PostProcessing));
     py::class_<RawStereoDepthConfig::PostProcessing::SpatialFilter> spatialFilter(postProcessing, "SpatialFilter", DOC(dai, RawStereoDepthConfig, PostProcessing, SpatialFilter));
     py::class_<RawStereoDepthConfig::PostProcessing::TemporalFilter> temporalFilter(postProcessing, "TemporalFilter", DOC(dai, RawStereoDepthConfig, PostProcessing, TemporalFilter));
@@ -142,10 +147,15 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     py::class_<RawFeatureTrackerConfig::MotionEstimator> motionEstimator(rawFeatureTrackerConfig, "MotionEstimator", DOC(dai, RawFeatureTrackerConfig, MotionEstimator));
     py::enum_<RawFeatureTrackerConfig::MotionEstimator::Type> motionEstimatorType(motionEstimator, "Type", DOC(dai, RawFeatureTrackerConfig, MotionEstimator, Type));
     py::class_<RawFeatureTrackerConfig::MotionEstimator::OpticalFlow> motionEstimatorOpticalFlow(motionEstimator, "OpticalFlow", DOC(dai, RawFeatureTrackerConfig, MotionEstimator, OpticalFlow));
-
     py::class_<RawFeatureTrackerConfig::FeatureMaintainer> featureMaintainer(rawFeatureTrackerConfig, "FeatureMaintainer", DOC(dai, RawFeatureTrackerConfig, FeatureMaintainer));
     py::class_<FeatureTrackerConfig, Buffer, std::shared_ptr<FeatureTrackerConfig>> featureTrackerConfig(m, "FeatureTrackerConfig", DOC(dai, FeatureTrackerConfig));
-
+    // April tags
+    py::class_<AprilTag> aprilTags(m, "AprilTag", DOC(dai, AprilTag));
+    py::class_<RawAprilTagConfig, RawBuffer, std::shared_ptr<RawAprilTagConfig>> rawAprilTagConfig(m, "RawAprilTagConfig", DOC(dai, RawAprilTagConfig));
+    py::enum_<RawAprilTagConfig::Family> aprilTagFamily(rawAprilTagConfig, "Family", DOC(dai, RawAprilTagConfig, Family));
+    py::class_<RawAprilTagConfig::QuadThresholds> quadThresholds(rawAprilTagConfig, "QuadThresholds", DOC(dai, RawAprilTagConfig, QuadThresholds));
+    py::class_<AprilTagConfig, Buffer, std::shared_ptr<AprilTagConfig>> aprilTagConfig(m, "AprilTagConfig", DOC(dai, AprilTagConfig));
+    py::class_<AprilTags, Buffer, std::shared_ptr<AprilTags>> aprilTagData(m, "AprilTags", DOC(dai, AprilTags));
 
     ///////////////////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////
@@ -257,6 +267,27 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def(py::init<>())
         .def_readwrite("tensors", &RawNNData::tensors)
         .def_readwrite("batchSize", &RawNNData::batchSize)
+        .def_property("ts",
+            [](const RawNNData& o){
+                double ts = o.ts.sec + o.ts.nsec / 1000000000.0;
+                return ts;
+            },
+            [](RawNNData& o, double ts){
+                o.ts.sec = ts;
+                o.ts.nsec = (ts - o.ts.sec) * 1000000000.0;
+            }
+        )
+        .def_property("tsDevice",
+            [](const RawNNData& o){
+                double ts = o.tsDevice.sec + o.tsDevice.nsec / 1000000000.0;
+                return ts;
+            },
+            [](RawNNData& o, double ts){
+                o.tsDevice.sec = ts;
+                o.tsDevice.nsec = (ts - o.tsDevice.sec) * 1000000000.0;
+            }
+        )
+        .def_readwrite("sequenceNum", &RawNNData::sequenceNum)
         ;
 
     tensorInfo
@@ -314,11 +345,53 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     rawImgDetections
         .def(py::init<>())
         .def_readwrite("detections", &RawImgDetections::detections)
+        .def_property("ts",
+            [](const RawImgDetections& o){
+                double ts = o.ts.sec + o.ts.nsec / 1000000000.0;
+                return ts;
+            },
+            [](RawImgDetections& o, double ts){
+                o.ts.sec = ts;
+                o.ts.nsec = (ts - o.ts.sec) * 1000000000.0;
+            }
+        )
+        .def_property("tsDevice",
+            [](const RawImgDetections& o){
+                double ts = o.tsDevice.sec + o.tsDevice.nsec / 1000000000.0;
+                return ts;
+            },
+            [](RawImgDetections& o, double ts){
+                o.tsDevice.sec = ts;
+                o.tsDevice.nsec = (ts - o.tsDevice.sec) * 1000000000.0;
+            }
+        )
+        .def_readwrite("sequenceNum", &RawImgDetections::sequenceNum)
         ;
 
     rawSpatialImgDetections
         .def(py::init<>())
         .def_readwrite("detections", &RawSpatialImgDetections::detections)
+        .def_property("ts",
+            [](const RawSpatialImgDetections& o){
+                double ts = o.ts.sec + o.ts.nsec / 1000000000.0;
+                return ts;
+            },
+            [](RawSpatialImgDetections& o, double ts){
+                o.ts.sec = ts;
+                o.ts.nsec = (ts - o.ts.sec) * 1000000000.0;
+            }
+        )
+        .def_property("tsDevice",
+            [](const RawSpatialImgDetections& o){
+                double ts = o.tsDevice.sec + o.tsDevice.nsec / 1000000000.0;
+                return ts;
+            },
+            [](RawSpatialImgDetections& o, double ts){
+                o.tsDevice.sec = ts;
+                o.tsDevice.nsec = (ts - o.tsDevice.sec) * 1000000000.0;
+            }
+        )
+        .def_readwrite("sequenceNum", &RawSpatialImgDetections::sequenceNum)
         ;
 
     // Bind RawImageManipConfig
@@ -433,6 +506,7 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def_readwrite("sequence", &IMUReport::sequence)
         .def_readwrite("accuracy", &IMUReport::accuracy)
         .def_readwrite("timestamp", &IMUReport::timestamp)
+        .def_readwrite("tsDevice", &IMUReport::tsDevice)
         ;
 
 
@@ -894,13 +968,14 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
 
         // setters
         .def("setTimestamp", &ImgFrame::setTimestamp, py::arg("timestamp"), DOC(dai, ImgFrame, setTimestamp))
+        .def("setTimestampDevice", &ImgFrame::setTimestampDevice, DOC(dai, ImgFrame, setTimestampDevice))
         .def("setInstanceNum", &ImgFrame::setInstanceNum, py::arg("instance"), DOC(dai, ImgFrame, setInstanceNum))
         .def("setCategory", &ImgFrame::setCategory, py::arg("category"), DOC(dai, ImgFrame, setCategory))
         .def("setSequenceNum", &ImgFrame::setSequenceNum, py::arg("seq"), DOC(dai, ImgFrame, setSequenceNum))
         .def("setWidth", &ImgFrame::setWidth, py::arg("width"), DOC(dai, ImgFrame, setWidth))
         .def("setHeight", &ImgFrame::setHeight, py::arg("height"), DOC(dai, ImgFrame, setHeight))
-        .def("setSize", static_cast<void(ImgFrame::*)(unsigned int, unsigned int)>(&ImgFrame::setSize), py::arg("width"), py::arg("height"), DOC(dai, ImgFrame, setSize))
-        .def("setSize", static_cast<void(ImgFrame::*)(std::tuple<unsigned int, unsigned int>)>(&ImgFrame::setSize), py::arg("sizer"), DOC(dai, ImgFrame, setSize, 2))
+        .def("setSize", static_cast<ImgFrame&(ImgFrame::*)(unsigned int, unsigned int)>(&ImgFrame::setSize), py::arg("width"), py::arg("height"), DOC(dai, ImgFrame, setSize))
+        .def("setSize", static_cast<ImgFrame&(ImgFrame::*)(std::tuple<unsigned int, unsigned int>)>(&ImgFrame::setSize), py::arg("sizer"), DOC(dai, ImgFrame, setSize, 2))
         .def("setType", &ImgFrame::setType, py::arg("type"), DOC(dai, ImgFrame, setType))
         ;
     // add aliases dai.ImgFrame.Type and dai.ImgFrame.Specs
@@ -923,9 +998,9 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
             std::vector<std::uint8_t> vec(data.data(), data.data() + data.size());
             obj.setLayer(name, std::move(vec));
         }, py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer))
-        .def("setLayer", static_cast<void(NNData::*)(const std::string&, const std::vector<int>&)>(&NNData::setLayer), py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer, 2))
-        .def("setLayer", static_cast<void(NNData::*)(const std::string&, std::vector<float>)>(&NNData::setLayer), py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer, 3))
-        .def("setLayer", static_cast<void(NNData::*)(const std::string&, std::vector<double>)>(&NNData::setLayer), py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer, 4))
+        .def("setLayer", static_cast<NNData&(NNData::*)(const std::string&, const std::vector<int>&)>(&NNData::setLayer), py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer, 2))
+        .def("setLayer", static_cast<NNData&(NNData::*)(const std::string&, std::vector<float>)>(&NNData::setLayer), py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer, 3))
+        .def("setLayer", static_cast<NNData&(NNData::*)(const std::string&, std::vector<double>)>(&NNData::setLayer), py::arg("name"), py::arg("data"), DOC(dai, NNData, setLayer, 4))
         .def("getLayer", &NNData::getLayer, py::arg("name"), py::arg("tensor"), DOC(dai, NNData, getLayer))
         .def("hasLayer", &NNData::hasLayer, py::arg("name"), DOC(dai, NNData, hasLayer))
         .def("getAllLayerNames", &NNData::getAllLayerNames, DOC(dai, NNData, getAllLayerNames))
@@ -937,6 +1012,12 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("getFirstLayerUInt8", &NNData::getFirstLayerUInt8, DOC(dai, NNData, getFirstLayerUInt8))
         .def("getFirstLayerFp16", &NNData::getFirstLayerFp16, DOC(dai, NNData, getFirstLayerFp16))
         .def("getFirstLayerInt32", &NNData::getFirstLayerInt32, DOC(dai, NNData, getFirstLayerInt32))
+        .def("getTimestamp", &NNData::getTimestamp, DOC(dai, NNData, getTimestamp))
+        .def("getTimestampDevice", &NNData::getTimestampDevice, DOC(dai, NNData, getTimestampDevice))
+        .def("getSequenceNum", &NNData::getSequenceNum, DOC(dai, NNData, getSequenceNum))
+        .def("setTimestamp", &NNData::setTimestamp, DOC(dai, NNData, setTimestamp))
+        .def("setTimestampDevice", &NNData::setTimestampDevice, DOC(dai, NNData, setTimestampDevice))
+        .def("setSequenceNum", &NNData::setSequenceNum, DOC(dai, NNData, setSequenceNum))
         ;
 
     // Bind ImgDetections
@@ -944,6 +1025,12 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     imgDetections
         .def(py::init<>(), DOC(dai, ImgDetections, ImgDetections))
         .def_property("detections", [](ImgDetections& det) { return &det.detections; }, [](ImgDetections& det, std::vector<ImgDetection> val) { det.detections = val; }, DOC(dai, ImgDetections, detections))
+        .def("getTimestamp", &ImgDetections::getTimestamp, DOC(dai, ImgDetections, getTimestamp))
+        .def("getTimestampDevice", &ImgDetections::getTimestampDevice, DOC(dai, ImgDetections, getTimestampDevice))
+        .def("getSequenceNum", &ImgDetections::getSequenceNum, DOC(dai, ImgDetections, getSequenceNum))
+        .def("setTimestamp", &ImgDetections::setTimestamp, DOC(dai, ImgDetections, setTimestamp))
+        .def("setTimestampDevice", &ImgDetections::setTimestampDevice, DOC(dai, ImgDetections, setTimestampDevice))
+        .def("setSequenceNum", &ImgDetections::setSequenceNum, DOC(dai, ImgDetections, setSequenceNum))
         ;
 
     // Bind SpatialImgDetections
@@ -951,6 +1038,12 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     spatialImgDetections
         .def(py::init<>())
         .def_property("detections", [](SpatialImgDetections& det) { return &det.detections; }, [](SpatialImgDetections& det, std::vector<SpatialImgDetection> val) { det.detections = val; })
+        .def("getTimestamp", &SpatialImgDetections::getTimestamp, DOC(dai, SpatialImgDetections, getTimestamp))
+        .def("getTimestampDevice", &SpatialImgDetections::getTimestampDevice, DOC(dai, SpatialImgDetections, getTimestampDevice))
+        .def("getSequenceNum", &SpatialImgDetections::getSequenceNum, DOC(dai, SpatialImgDetections, getSequenceNum))
+        .def("setTimestamp", &SpatialImgDetections::setTimestamp, DOC(dai, SpatialImgDetections, setTimestamp))
+        .def("setTimestampDevice", &SpatialImgDetections::setTimestampDevice, DOC(dai, SpatialImgDetections, setTimestampDevice))
+        .def("setSequenceNum", &SpatialImgDetections::setSequenceNum, DOC(dai, SpatialImgDetections, setSequenceNum))
         ;
 
      // Bind ImageManipConfig
@@ -958,8 +1051,8 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     imageManipConfig
         .def(py::init<>())
         // setters
-        .def("setCropRect", static_cast<void(ImageManipConfig::*)(float, float, float, float)>(&ImageManipConfig::setCropRect), py::arg("xmin"), py::arg("ymin"), py::arg("xmax"), py::arg("xmax"), DOC(dai, ImageManipConfig, setCropRect))
-        .def("setCropRect", static_cast<void(ImageManipConfig::*)(std::tuple<float, float, float, float>)>(&ImageManipConfig::setCropRect), py::arg("coordinates"), DOC(dai, ImageManipConfig, setCropRect, 2))
+        .def("setCropRect", static_cast<ImageManipConfig&(ImageManipConfig::*)(float, float, float, float)>(&ImageManipConfig::setCropRect), py::arg("xmin"), py::arg("ymin"), py::arg("xmax"), py::arg("xmax"), DOC(dai, ImageManipConfig, setCropRect))
+        .def("setCropRect", static_cast<ImageManipConfig&(ImageManipConfig::*)(std::tuple<float, float, float, float>)>(&ImageManipConfig::setCropRect), py::arg("coordinates"), DOC(dai, ImageManipConfig, setCropRect, 2))
         .def("setCropRotatedRect", &ImageManipConfig::setCropRotatedRect, py::arg("rr"), py::arg("normalizedCoords") = true, DOC(dai, ImageManipConfig, setCropRotatedRect))
         .def("setCenterCrop", &ImageManipConfig::setCenterCrop, py::arg("ratio"), py::arg("whRatio")=1.0f, DOC(dai, ImageManipConfig, setCenterCrop))
         .def("setWarpTransformFourPoints", &ImageManipConfig::setWarpTransformFourPoints, py::arg("pt"), py::arg("normalizedCoords"), DOC(dai, ImageManipConfig, setWarpTransformFourPoints))
@@ -968,10 +1061,10 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("setWarpBorderFillColor", &ImageManipConfig::setWarpBorderFillColor, py::arg("red"), py::arg("green"), py::arg("blue"), DOC(dai, ImageManipConfig, setWarpBorderFillColor))
         .def("setRotationDegrees", &ImageManipConfig::setRotationDegrees, py::arg("deg"), DOC(dai, ImageManipConfig, setRotationDegrees))
         .def("setRotationRadians", &ImageManipConfig::setRotationRadians, py::arg("rad"), DOC(dai, ImageManipConfig, setRotationRadians))
-        .def("setResize", static_cast<void(ImageManipConfig::*)(int, int)>(&ImageManipConfig::setResize), py::arg("w"), py::arg("h"), DOC(dai, ImageManipConfig, setResize))
-        .def("setResize", static_cast<void(ImageManipConfig::*)(std::tuple<int, int>)>(&ImageManipConfig::setResize), py::arg("size"), DOC(dai, ImageManipConfig, setResize, 2))
-        .def("setResizeThumbnail", static_cast<void(ImageManipConfig::*)(int, int, int, int, int)>(&ImageManipConfig::setResizeThumbnail), py::arg("w"), py::arg("h"), py::arg("bgRed")=0, py::arg("bgGreen")=0, py::arg("bgBlue")=0, DOC(dai, ImageManipConfig, setResizeThumbnail))
-        .def("setResizeThumbnail", static_cast<void(ImageManipConfig::*)(std::tuple<int, int>, int, int, int)>(&ImageManipConfig::setResizeThumbnail), py::arg("size"), py::arg("bgRed")=0, py::arg("bgGreen")=0, py::arg("bgBlue")=0, DOC(dai, ImageManipConfig, setResizeThumbnail, 2))
+        .def("setResize", static_cast<ImageManipConfig&(ImageManipConfig::*)(int, int)>(&ImageManipConfig::setResize), py::arg("w"), py::arg("h"), DOC(dai, ImageManipConfig, setResize))
+        .def("setResize", static_cast<ImageManipConfig&(ImageManipConfig::*)(std::tuple<int, int>)>(&ImageManipConfig::setResize), py::arg("size"), DOC(dai, ImageManipConfig, setResize, 2))
+        .def("setResizeThumbnail", static_cast<ImageManipConfig&(ImageManipConfig::*)(int, int, int, int, int)>(&ImageManipConfig::setResizeThumbnail), py::arg("w"), py::arg("h"), py::arg("bgRed")=0, py::arg("bgGreen")=0, py::arg("bgBlue")=0, DOC(dai, ImageManipConfig, setResizeThumbnail))
+        .def("setResizeThumbnail", static_cast<ImageManipConfig&(ImageManipConfig::*)(std::tuple<int, int>, int, int, int)>(&ImageManipConfig::setResizeThumbnail), py::arg("size"), py::arg("bgRed")=0, py::arg("bgGreen")=0, py::arg("bgBlue")=0, DOC(dai, ImageManipConfig, setResizeThumbnail, 2))
         .def("setFrameType", &ImageManipConfig::setFrameType, py::arg("name"), DOC(dai, ImageManipConfig, setFrameType))
         .def("setHorizontalFlip", &ImageManipConfig::setHorizontalFlip, py::arg("flip"), DOC(dai, ImageManipConfig, setHorizontalFlip))
         .def("setReusePreviousImage", &ImageManipConfig::setReusePreviousImage, py::arg("reuse"), DOC(dai, ImageManipConfig, setReusePreviousImage))
@@ -1125,7 +1218,6 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         ;
 
 
-
     imuData
         .def(py::init<>())
         .def_property("packets", [](IMUData& imuDta) { return &imuDta.packets; }, [](IMUData& imuDta, std::vector<IMUPacket> val) { imuDta.packets = val; }, DOC(dai, IMUData, packets))
@@ -1149,9 +1241,20 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
 
     m.attr("StereoDepthProperties").attr("DepthAlign") = depthAlign;
 
+    depthUnit
+        .value("METER", RawStereoDepthConfig::AlgorithmControl::DepthUnit::METER, DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit, METER))
+        .value("CENTIMETER", RawStereoDepthConfig::AlgorithmControl::DepthUnit::CENTIMETER, DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit, CENTIMETER))
+        .value("MILLIMETER", RawStereoDepthConfig::AlgorithmControl::DepthUnit::MILLIMETER, DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit, MILLIMETER))
+        .value("INCH", RawStereoDepthConfig::AlgorithmControl::DepthUnit::INCH, DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit, INCH))
+        .value("FOOT", RawStereoDepthConfig::AlgorithmControl::DepthUnit::FOOT, DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit, FOOT))
+        .value("CUSTOM", RawStereoDepthConfig::AlgorithmControl::DepthUnit::CUSTOM, DOC(dai, RawStereoDepthConfig, AlgorithmControl, DepthUnit, CUSTOM))
+        ;
+
     algorithmControl
         .def(py::init<>())
         .def_readwrite("depthAlign", &RawStereoDepthConfig::AlgorithmControl::depthAlign, DOC(dai, RawStereoDepthConfig, AlgorithmControl, depthAlign))
+        .def_readwrite("depthUnit", &RawStereoDepthConfig::AlgorithmControl::depthUnit, DOC(dai, RawStereoDepthConfig, AlgorithmControl, depthUnit))
+        .def_readwrite("customDepthUnitMultiplier", &RawStereoDepthConfig::AlgorithmControl::customDepthUnitMultiplier, DOC(dai, RawStereoDepthConfig, AlgorithmControl, customDepthUnitMultiplier))
         .def_readwrite("enableLeftRightCheck", &RawStereoDepthConfig::AlgorithmControl::enableLeftRightCheck, DOC(dai, RawStereoDepthConfig, AlgorithmControl, enableLeftRightCheck))
         .def_readwrite("enableExtended", &RawStereoDepthConfig::AlgorithmControl::enableExtended, DOC(dai, RawStereoDepthConfig, AlgorithmControl, enableExtended))
         .def_readwrite("enableSubpixel", &RawStereoDepthConfig::AlgorithmControl::enableSubpixel, DOC(dai, RawStereoDepthConfig, AlgorithmControl, enableSubpixel))
@@ -1298,6 +1401,8 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("setExtendedDisparity",    &StereoDepthConfig::setExtendedDisparity, py::arg("enable"), DOC(dai, StereoDepthConfig, setExtendedDisparity))
         .def("setSubpixel",             &StereoDepthConfig::setSubpixel, py::arg("enable"), DOC(dai, StereoDepthConfig, setSubpixel))
         .def("getMaxDisparity",         &StereoDepthConfig::getMaxDisparity, DOC(dai, StereoDepthConfig, getMaxDisparity))
+        .def("setDepthUnit",            &StereoDepthConfig::setDepthUnit, DOC(dai, StereoDepthConfig, setDepthUnit))
+        .def("getDepthUnit",            &StereoDepthConfig::getDepthUnit, DOC(dai, StereoDepthConfig, getDepthUnit))
         .def("set",                     &StereoDepthConfig::set, py::arg("config"), DOC(dai, StereoDepthConfig, set))
         .def("get",                     &StereoDepthConfig::get, DOC(dai, StereoDepthConfig, get))
         ;
@@ -1338,11 +1443,9 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def(py::init<>())
         .def_readwrite("position", &TrackedFeature::position, DOC(dai, TrackedFeature, position))
         .def_readwrite("id", &TrackedFeature::id, DOC(dai, TrackedFeature, id))
-#if 0
         .def_readwrite("age", &TrackedFeature::age, DOC(dai, TrackedFeature, age))
         .def_readwrite("harrisScore", &TrackedFeature::harrisScore, DOC(dai, TrackedFeature, harrisScore))
         .def_readwrite("trackingError", &TrackedFeature::trackingError, DOC(dai, TrackedFeature, trackingError))
-#endif
         ;
 
 
@@ -1420,15 +1523,15 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def(py::init<>())
         .def(py::init<std::shared_ptr<RawFeatureTrackerConfig>>())
 
-        .def("setCornerDetector", static_cast<void(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::CornerDetector::Type)>(&FeatureTrackerConfig::setCornerDetector), py::arg("cornerDetector"), DOC(dai, FeatureTrackerConfig, setCornerDetector))
-        .def("setCornerDetector", static_cast<void(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::CornerDetector)>(&FeatureTrackerConfig::setCornerDetector), py::arg("config"), DOC(dai, FeatureTrackerConfig, setCornerDetector, 2))
-        .def("setMotionEstimator", static_cast<void(FeatureTrackerConfig::*)(bool)>(&FeatureTrackerConfig::setMotionEstimator), py::arg("enable"), DOC(dai, FeatureTrackerConfig, setMotionEstimator))
-        .def("setMotionEstimator", static_cast<void(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::MotionEstimator)>(&FeatureTrackerConfig::setMotionEstimator), py::arg("config"), DOC(dai, FeatureTrackerConfig, setMotionEstimator, 2))
-        .def("setOpticalFlow", static_cast<void(FeatureTrackerConfig::*)()>(&FeatureTrackerConfig::setOpticalFlow), DOC(dai, FeatureTrackerConfig, setOpticalFlow))
-        .def("setOpticalFlow", static_cast<void(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::MotionEstimator::OpticalFlow)>(&FeatureTrackerConfig::setOpticalFlow), py::arg("config"), DOC(dai, FeatureTrackerConfig, setOpticalFlow, 2))
+        .def("setCornerDetector", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::CornerDetector::Type)>(&FeatureTrackerConfig::setCornerDetector), py::arg("cornerDetector"), DOC(dai, FeatureTrackerConfig, setCornerDetector))
+        .def("setCornerDetector", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::CornerDetector)>(&FeatureTrackerConfig::setCornerDetector), py::arg("config"), DOC(dai, FeatureTrackerConfig, setCornerDetector, 2))
+        .def("setMotionEstimator", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(bool)>(&FeatureTrackerConfig::setMotionEstimator), py::arg("enable"), DOC(dai, FeatureTrackerConfig, setMotionEstimator))
+        .def("setMotionEstimator", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::MotionEstimator)>(&FeatureTrackerConfig::setMotionEstimator), py::arg("config"), DOC(dai, FeatureTrackerConfig, setMotionEstimator, 2))
+        .def("setOpticalFlow", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)()>(&FeatureTrackerConfig::setOpticalFlow), DOC(dai, FeatureTrackerConfig, setOpticalFlow))
+        .def("setOpticalFlow", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::MotionEstimator::OpticalFlow)>(&FeatureTrackerConfig::setOpticalFlow), py::arg("config"), DOC(dai, FeatureTrackerConfig, setOpticalFlow, 2))
         .def("setHwMotionEstimation", &FeatureTrackerConfig::setHwMotionEstimation, DOC(dai, FeatureTrackerConfig, setHwMotionEstimation))
-        .def("setFeatureMaintainer", static_cast<void(FeatureTrackerConfig::*)(bool)>(&FeatureTrackerConfig::setFeatureMaintainer), py::arg("enable"), DOC(dai, FeatureTrackerConfig, setFeatureMaintainer))
-        .def("setFeatureMaintainer", static_cast<void(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::FeatureMaintainer)>(&FeatureTrackerConfig::setFeatureMaintainer), py::arg("config"), DOC(dai, FeatureTrackerConfig, setFeatureMaintainer, 2))
+        .def("setFeatureMaintainer", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(bool)>(&FeatureTrackerConfig::setFeatureMaintainer), py::arg("enable"), DOC(dai, FeatureTrackerConfig, setFeatureMaintainer))
+        .def("setFeatureMaintainer", static_cast<FeatureTrackerConfig&(FeatureTrackerConfig::*)(dai::FeatureTrackerConfig::FeatureMaintainer)>(&FeatureTrackerConfig::setFeatureMaintainer), py::arg("config"), DOC(dai, FeatureTrackerConfig, setFeatureMaintainer, 2))
         .def("setNumTargetFeatures", &FeatureTrackerConfig::setNumTargetFeatures, py::arg("numTargetFeatures"), DOC(dai, FeatureTrackerConfig, setNumTargetFeatures))
 
         .def("set", &FeatureTrackerConfig::set, py::arg("config"), DOC(dai, FeatureTrackerConfig, set))
@@ -1439,5 +1542,68 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     m.attr("FeatureTrackerConfig").attr("CornerDetector") = m.attr("RawFeatureTrackerConfig").attr("CornerDetector");
     m.attr("FeatureTrackerConfig").attr("MotionEstimator") = m.attr("RawFeatureTrackerConfig").attr("MotionEstimator");
     m.attr("FeatureTrackerConfig").attr("FeatureMaintainer") = m.attr("RawFeatureTrackerConfig").attr("FeatureMaintainer");
+
+
+    aprilTags
+        .def(py::init<>())
+        .def_readwrite("id", &AprilTag::id, DOC(dai, AprilTag, id))
+        .def_readwrite("hamming", &AprilTag::hamming, DOC(dai, AprilTag, hamming))
+        .def_readwrite("decisionMargin", &AprilTag::decisionMargin, DOC(dai, AprilTag, decisionMargin))
+        .def_readwrite("topLeft", &AprilTag::topLeft, DOC(dai, AprilTag, topLeft))
+        .def_readwrite("topRight", &AprilTag::topRight, DOC(dai, AprilTag, topRight))
+        .def_readwrite("bottomRight", &AprilTag::bottomRight, DOC(dai, AprilTag, bottomRight))
+        .def_readwrite("bottomLeft", &AprilTag::bottomLeft, DOC(dai, AprilTag, bottomLeft))
+        ;
+
+
+    aprilTagFamily
+        .value("TAG_36H11", RawAprilTagConfig::Family::TAG_36H11)
+        .value("TAG_36H10", RawAprilTagConfig::Family::TAG_36H10)
+        .value("TAG_25H9", RawAprilTagConfig::Family::TAG_25H9)
+        .value("TAG_16H5", RawAprilTagConfig::Family::TAG_16H5)
+        .value("TAG_CIR21H7", RawAprilTagConfig::Family::TAG_CIR21H7)
+        .value("TAG_CIR49H12", RawAprilTagConfig::Family::TAG_CIR49H12)
+        .value("TAG_CUST48H12", RawAprilTagConfig::Family::TAG_CUST48H12)
+        .value("TAG_STAND41H12", RawAprilTagConfig::Family::TAG_STAND41H12)
+        .value("TAG_STAND52H13", RawAprilTagConfig::Family::TAG_STAND52H13)
+        ;
+
+    quadThresholds
+        .def(py::init<>())
+        .def_readwrite("minClusterPixels", &RawAprilTagConfig::QuadThresholds::minClusterPixels, DOC(dai, RawAprilTagConfig, QuadThresholds, minClusterPixels))
+        .def_readwrite("maxNmaxima", &RawAprilTagConfig::QuadThresholds::maxNmaxima, DOC(dai, RawAprilTagConfig, QuadThresholds, maxNmaxima))
+        .def_readwrite("criticalDegree", &RawAprilTagConfig::QuadThresholds::criticalDegree, DOC(dai, RawAprilTagConfig, QuadThresholds, criticalDegree))
+        .def_readwrite("maxLineFitMse", &RawAprilTagConfig::QuadThresholds::maxLineFitMse, DOC(dai, RawAprilTagConfig, QuadThresholds, maxLineFitMse))
+        .def_readwrite("minWhiteBlackDiff", &RawAprilTagConfig::QuadThresholds::minWhiteBlackDiff, DOC(dai, RawAprilTagConfig, QuadThresholds, minWhiteBlackDiff))
+        .def_readwrite("deglitch", &RawAprilTagConfig::QuadThresholds::deglitch, DOC(dai, RawAprilTagConfig, QuadThresholds, deglitch))
+        ;
+
+
+    rawAprilTagConfig
+        .def(py::init<>())
+        .def_readwrite("family", &RawAprilTagConfig::family, DOC(dai, RawAprilTagConfig, family))
+        .def_readwrite("quadDecimate", &RawAprilTagConfig::quadDecimate, DOC(dai, RawAprilTagConfig, quadDecimate))
+        .def_readwrite("quadSigma", &RawAprilTagConfig::quadSigma, DOC(dai, RawAprilTagConfig, quadSigma))
+        .def_readwrite("refineEdges", &RawAprilTagConfig::refineEdges, DOC(dai, RawAprilTagConfig, refineEdges))
+        .def_readwrite("decodeSharpening", &RawAprilTagConfig::decodeSharpening, DOC(dai, RawAprilTagConfig, decodeSharpening))
+        .def_readwrite("maxHammingDistance", &RawAprilTagConfig::maxHammingDistance, DOC(dai, RawAprilTagConfig, maxHammingDistance))
+        .def_readwrite("quadThresholds", &RawAprilTagConfig::quadThresholds, DOC(dai, RawAprilTagConfig, quadThresholds))
+        ;
+
+
+    aprilTagConfig
+        .def(py::init<>())
+        .def("setFamily", &AprilTagConfig::setFamily, py::arg("family"), DOC(dai, AprilTagConfig, setFamily))
+        .def("set", &AprilTagConfig::set, DOC(dai, AprilTagConfig, set))
+        .def("get", &AprilTagConfig::get, DOC(dai, AprilTagConfig, get))
+        ;
+    m.attr("AprilTagConfig").attr("Family") = m.attr("RawAprilTagConfig").attr("Family");
+    m.attr("AprilTagConfig").attr("QuadThresholds") = m.attr("RawAprilTagConfig").attr("QuadThresholds");
+
+
+    aprilTagData
+        .def(py::init<>())
+        .def_property("aprilTags", [](AprilTags& det) { return &det.aprilTags; }, [](AprilTags& det, std::vector<AprilTag> val) { det.aprilTags = val; })
+        ;
 
 }
