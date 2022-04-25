@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 
 """
-This example shows usage of Camera Control message as well as ColorCamera configInput to change crop x and y
-Uses 'WASD' controls to move the crop window, 'C' to capture a still image, 'T' to trigger autofocus, 'IOKL,.[]'
-for manual exposure/focus/white-balance:
+Use 'T' to trigger autofocus, 'IOKL,.'
+for manual exposure/focus:
   Control:      key[dec/inc]  min..max
   exposure time:     I   O      1..33000 [us]
   sensitivity iso:   K   L    100..1600
   focus:             ,   .      0..255 [far..near]
-  white balance:     [   ]   1000..12000 (light color temperature K)
 To go back to auto controls:
   'E' - autoexposure
   'F' - autofocus (continuous)
-  'B' - auto white-balance
 
 Other controls:
 '1' - AWB lock (true / false)
@@ -33,82 +30,166 @@ For the 'Select control: ...' options, use these keys to modify the value:
   '+' or '=' to increase
 """
 
-import depthai as dai
+import os
+#os.environ["DEPTHAI_LEVEL"] = "debug"
+
 import cv2
+import argparse
+import depthai as dai
+import collections
+import time
 
-# Step size ('W','A','S','D' controls)
-STEP_SIZE = 8
-# Manual exposure/focus/white-balance set step
-EXP_STEP = 500  # us
-ISO_STEP = 50
-LENS_STEP = 3
-WB_STEP = 200
+def socket_type_pair(arg):
+    socket, type = arg.split(',')
+    if not (socket in ['rgb', 'left', 'right', 'camd']):  raise ValueError("")
+    if not (type in ['m', 'mono', 'c', 'color']): raise ValueError("")
+    is_color = True if type in ['c', 'color'] else False
+    return [socket, is_color]
 
-# On some host systems it's faster to display uncompressed video
-videoMjpeg = False
+parser = argparse.ArgumentParser()
+parser.add_argument('-cams', '--cameras', type=socket_type_pair, nargs='+',
+                    default=[['rgb', True], ['left', False], ['right', False], ['camd', True]],
+                    help="Which camera sockets to enable, and type: c[olor] / m[ono]. "
+                    "E.g: -cams rgb,m right,c . Default: rgb,c left,m right,m camd,c")
+parser.add_argument('-mres', '--mono-resolution', type=int, default=800, choices={480, 400, 720, 800},
+                    help="Select mono camera resolution (height). Default: %(default)s")
+parser.add_argument('-cres', '--color-resolution', default='1080', choices={'720', '800', '1080', '4k', '5mp', '12mp'},
+                    help="Select color camera resolution / height. Default: %(default)s")
+parser.add_argument('-rot', '--rotate', const='all', choices={'all', 'rgb', 'mono'}, nargs="?",
+                    help="Which cameras to rotate 180 degrees. All if not filtered")
+parser.add_argument('-fps', '--fps', type=float, default=30,
+                    help="FPS to set for all cameras")
+args = parser.parse_args()
+
+cam_list = []
+cam_type_color = {}
+print("Enabled cameras:")
+for socket, is_color in args.cameras:
+    cam_list.append(socket)
+    cam_type_color[socket] = is_color
+    print(socket.rjust(7), ':', 'color' if is_color else 'mono')
+
+print("DepthAI version:", dai.__version__)
+print("DepthAI path:", dai.__file__)
+
+cam_socket_opts = {
+    'rgb'  : dai.CameraBoardSocket.RGB,   # Or CAM_A
+    'left' : dai.CameraBoardSocket.LEFT,  # Or CAM_B
+    'right': dai.CameraBoardSocket.RIGHT, # Or CAM_C
+    'camd' : dai.CameraBoardSocket.CAM_D,
+}
+
+rotate = {
+    'rgb'  : args.rotate in ['all', 'rgb'],
+    'left' : args.rotate in ['all', 'mono'],
+    'right': args.rotate in ['all', 'mono'],
+    'camd' : args.rotate in ['all', 'rgb'],
+}
+
+mono_res_opts = {
+    400: dai.MonoCameraProperties.SensorResolution.THE_400_P,
+    480: dai.MonoCameraProperties.SensorResolution.THE_480_P,
+    720: dai.MonoCameraProperties.SensorResolution.THE_720_P,
+    800: dai.MonoCameraProperties.SensorResolution.THE_800_P,
+}
+
+color_res_opts = {
+    '720':  dai.ColorCameraProperties.SensorResolution.THE_720_P,
+    '800':  dai.ColorCameraProperties.SensorResolution.THE_800_P,
+    '1080': dai.ColorCameraProperties.SensorResolution.THE_1080_P,
+    '4k':   dai.ColorCameraProperties.SensorResolution.THE_4_K,
+    '5mp': dai.ColorCameraProperties.SensorResolution.THE_5_MP,
+    '12mp': dai.ColorCameraProperties.SensorResolution.THE_12_MP,
+}
 
 def clamp(num, v0, v1):
     return max(v0, min(num, v1))
 
-# Create pipeline
+# Calculates FPS over a moving window, configurable
+class FPS:
+    def __init__(self, window_size=30):
+        self.dq = collections.deque(maxlen=window_size)
+        self.fps = 0
+
+    def update(self, timestamp=None):
+        if timestamp == None: timestamp = time.monotonic()
+        count = len(self.dq)
+        if count > 0: self.fps = count / (timestamp - self.dq[0])
+        self.dq.append(timestamp)
+
+    def get(self):
+        return self.fps
+
+# Start defining a pipeline
 pipeline = dai.Pipeline()
+# Uncomment to get better throughput
+#pipeline.setXLinkChunkSize(0)
 
-# Define sources and outputs
-camRgb = pipeline.create(dai.node.ColorCamera)
-videoEncoder = pipeline.create(dai.node.VideoEncoder)
-stillEncoder = pipeline.create(dai.node.VideoEncoder)
+control = pipeline.createXLinkIn()
+control.setStreamName('control')
 
-#camRgb.initialControl.setAutoFocusLensRange(90, 204)
+cam = {}
+xout = {}
+for c in cam_list:
+    xout[c] = pipeline.createXLinkOut()
+    xout[c].setStreamName(c)
+    if cam_type_color[c]:
+        cam[c] = pipeline.createColorCamera()
+        cam[c].setResolution(color_res_opts[args.color_resolution])
+        #cam[c].setIspScale(1, 2)
+        #cam[c].initialControl.setManualFocus(85) # TODO
+        cam[c].isp.link(xout[c].input)
+    else:
+        cam[c] = pipeline.createMonoCamera()
+        cam[c].setResolution(mono_res_opts[args.mono_resolution])
+        cam[c].out.link(xout[c].input)
+    cam[c].setBoardSocket(cam_socket_opts[c])
+    # Num frames to capture on trigger, with first to be discarded (due to degraded quality)
+    #cam[c].initialControl.setExternalTrigger(2, 1)
 
-controlIn = pipeline.create(dai.node.XLinkIn)
-configIn = pipeline.create(dai.node.XLinkIn)
-videoMjpegOut = pipeline.create(dai.node.XLinkOut)
-stillMjpegOut = pipeline.create(dai.node.XLinkOut)
-previewOut = pipeline.create(dai.node.XLinkOut)
+    #cam[c].initialControl.setManualExposure(15000, 400) # exposure [us], iso
+    # When set, takes effect after the first 2 frames
+    #cam[c].initialControl.setManualWhiteBalance(4000)  # light temperature in K, 1000..12000
+    control.out.link(cam[c].inputControl)
+    if rotate[c]:
+        cam[c].setImageOrientation(dai.CameraImageOrientation.ROTATE_180_DEG)
+    cam[c].setFps(args.fps)
 
-controlIn.setStreamName('control')
-configIn.setStreamName('config')
-videoMjpegOut.setStreamName('video')
-stillMjpegOut.setStreamName('still')
-previewOut.setStreamName('preview')
+if 0:
+    print("=== Using custom camera tuning, and limiting RGB FPS to 10")
+    pipeline.setCameraTuningBlobPath("/home/user/Downloads/tuning_color_low_light.bin")
+    # TODO: change sensor driver to make FPS automatic (based on requested exposure time)
+    cam['rgb'].setFps(10)
 
-# Properties
-camRgb.setVideoSize(640, 360)
-camRgb.setPreviewSize(300, 300)
-videoEncoder.setDefaultProfilePreset(camRgb.getFps(), dai.VideoEncoderProperties.Profile.MJPEG)
-stillEncoder.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.MJPEG)
-
-# Linking
-camRgb.still.link(stillEncoder.input)
-camRgb.preview.link(previewOut.input)
-controlIn.out.link(camRgb.inputControl)
-configIn.out.link(camRgb.inputConfig)
-videoEncoder.bitstream.link(videoMjpegOut.input)
-stillEncoder.bitstream.link(stillMjpegOut.input)
-if videoMjpeg:
-    camRgb.video.link(videoEncoder.input)
-    videoEncoder.bitstream.link(videoMjpegOut.input)
-else:
-    camRgb.video.link(videoMjpegOut.input)
-
-# Connect to device and start pipeline
+# Pipeline is defined, now we can connect to the device
 with dai.Device(pipeline) as device:
+    #print('Connected cameras:', [c.name for c in device.getConnectedCameras()])
+    print('Connected cameras:')
+    for p in device.getConnectedCameraProperties():
+        print(f' -socket {p.socket.name:6}: {p.sensorName:6} {p.width:4} x {p.height:4} focus:', end='')
+        print('auto ' if p.hasAutofocus else 'fixed', '- ', end='')
+        print(*[type.name for type in p.supportedTypes])
 
-    # Get data queues
+    print('USB speed:', device.getUsbSpeed().name)
+
+    q = {}
+    fps_host = {}  # FPS computed based on the time we receive frames in app
+    fps_capt = {}  # FPS computed based on capture timestamps from device
+    for c in cam_list:
+        q[c] = device.getOutputQueue(name=c, maxSize=4, blocking=False)
+        # The OpenCV window resize may produce some artifacts
+        if 0 and c == 'rgb':
+            cv2.namedWindow(c, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(c, (640, 480))
+        fps_host[c] = FPS()
+        fps_capt[c] = FPS()
+
     controlQueue = device.getInputQueue('control')
-    configQueue = device.getInputQueue('config')
-    previewQueue = device.getOutputQueue('preview')
-    videoQueue = device.getOutputQueue('video')
-    stillQueue = device.getOutputQueue('still')
 
-    # Max cropX & cropY
-    maxCropX = (camRgb.getResolutionWidth() - camRgb.getVideoWidth()) / camRgb.getResolutionWidth()
-    maxCropY = (camRgb.getResolutionHeight() - camRgb.getVideoHeight()) / camRgb.getResolutionHeight()
-
-    # Default crop
-    cropX = 0
-    cropY = 0
-    sendCamConfig = True
+    # Manual exposure/focus set step
+    EXP_STEP = 500  # us
+    ISO_STEP = 50
+    LENS_STEP = 3
 
     # Defaults and limits for manual focus/exposure controls
     lensPos = 150
@@ -122,10 +203,6 @@ with dai.Device(pipeline) as device:
     sensIso = 800
     sensMin = 100
     sensMax = 1600
-    
-    wbManual = 4000
-    wbMin = 1000
-    wbMax = 12000
 
     # TODO make auto-iterable
     awb_mode_idx = -1
@@ -173,42 +250,24 @@ with dai.Device(pipeline) as device:
     chroma_denoise = 0
     control = 'none'
 
+    print("Cam:", *['     ' + c.ljust(8) for c in cam_list], "[host | capture timestamp]")
+
     while True:
-        previewFrames = previewQueue.tryGetAll()
-        for previewFrame in previewFrames:
-            cv2.imshow('preview', previewFrame.getData().reshape(previewFrame.getHeight(), previewFrame.getWidth(), 3))
-            #print(previewFrame.getLensPosition(), previewFrame.getExposureTime())
+        for c in cam_list:
+            pkt = q[c].tryGet()
+            if pkt is not None:
+                fps_host[c].update()
+                fps_capt[c].update(pkt.getTimestamp().total_seconds())
+                frame = pkt.getCvFrame()
+                cv2.imshow(c, frame)
+        print("\rFPS:",
+              *["{:6.2f}|{:6.2f}".format(fps_host[c].get(), fps_capt[c].get()) for c in cam_list],
+              end='', flush=True)
 
-        videoFrames = videoQueue.tryGetAll()
-        for videoFrame in videoFrames:
-            # Decode JPEG
-            if videoMjpeg:
-                frame = cv2.imdecode(videoFrame.getData(), cv2.IMREAD_UNCHANGED)
-            else:
-                frame = videoFrame.getCvFrame()
-            # Display
-            cv2.imshow('video', frame)
-
-            # Send new cfg to camera
-            if sendCamConfig:
-                cfg = dai.ImageManipConfig()
-                cfg.setCropRect(cropX, cropY, 0, 0)
-                configQueue.send(cfg)
-                print('Sending new crop - x: ', cropX, ' y: ', cropY)
-                sendCamConfig = False
-
-        stillFrames = stillQueue.tryGetAll()
-        for stillFrame in stillFrames:
-            # Decode JPEG
-            frame = cv2.imdecode(stillFrame.getData(), cv2.IMREAD_UNCHANGED)
-            # Display
-            cv2.imshow('still', frame)
-
-        # Update screen (1ms pooling rate)
         key = cv2.waitKey(1)
         if key == ord('q'):
             break
-        elif key == ord('c'):
+        elif False:  # key == ord('c'):
             ctrl = dai.CameraControl()
             ctrl.setCaptureStill(True)
             controlQueue.send(ctrl)
@@ -227,11 +286,6 @@ with dai.Device(pipeline) as device:
             print("Autoexposure enable")
             ctrl = dai.CameraControl()
             ctrl.setAutoExposureEnable()
-            controlQueue.send(ctrl)
-        elif key == ord('b'):
-            print("Auto white-balance enable")
-            ctrl = dai.CameraControl()
-            ctrl.setAutoWhiteBalanceMode(dai.CameraControl.AutoWhiteBalanceMode.AUTO)
             controlQueue.send(ctrl)
         elif key in [ord(','), ord('.')]:
             if key == ord(','): lensPos -= LENS_STEP
@@ -252,28 +306,6 @@ with dai.Device(pipeline) as device:
             ctrl = dai.CameraControl()
             ctrl.setManualExposure(expTime, sensIso)
             controlQueue.send(ctrl)
-        elif key in [ord('['), ord(']')]:
-            if key == ord('['): wbManual -= WB_STEP
-            if key == ord(']'): wbManual += WB_STEP
-            wbManual = clamp(wbManual, wbMin, wbMax)
-            print("Setting manual white balance, temperature: ", wbManual, "K")
-            ctrl = dai.CameraControl()
-            ctrl.setManualWhiteBalance(wbManual)
-            controlQueue.send(ctrl)
-        elif key in [ord('w'), ord('a'), ord('s'), ord('d')]:
-            if key == ord('a'):
-                cropX = cropX - (maxCropX / camRgb.getResolutionWidth()) * STEP_SIZE
-                if cropX < 0: cropX = maxCropX
-            elif key == ord('d'):
-                cropX = cropX + (maxCropX / camRgb.getResolutionWidth()) * STEP_SIZE
-                if cropX > maxCropX: cropX = 0
-            elif key == ord('w'):
-                cropY = cropY - (maxCropY / camRgb.getResolutionHeight()) * STEP_SIZE
-                if cropY < 0: cropY = maxCropY
-            elif key == ord('s'):
-                cropY = cropY + (maxCropY / camRgb.getResolutionHeight()) * STEP_SIZE
-                if cropY > maxCropY: cropY = 0
-            sendCamConfig = True
         elif key == ord('1'):
             awb_lock = not awb_lock
             print("Auto white balance lock:", awb_lock)

@@ -91,6 +91,7 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
     py::enum_<RawCameraControl::SceneMode> rawCameraControlSceneMode(rawCameraControl, "SceneMode", DOC(dai, RawCameraControl, SceneMode));
     py::enum_<RawCameraControl::AntiBandingMode> rawCameraControlAntiBandingMode(rawCameraControl, "AntiBandingMode", DOC(dai, RawCameraControl, AntiBandingMode));
     py::enum_<RawCameraControl::EffectMode> rawCameraControlEffectMode(rawCameraControl, "EffectMode", DOC(dai, RawCameraControl, EffectMode));
+    py::enum_<RawCameraControl::FrameSyncMode> rawCameraControlFrameSyncMode(rawCameraControl, "FrameSyncMode", DOC(dai, RawCameraControl, FrameSyncMode));
     py::class_<RawSystemInformation, RawBuffer, std::shared_ptr<RawSystemInformation>> rawSystemInformation(m, "RawSystemInformation", DOC(dai, RawSystemInformation));
     py::class_<ADatatype, std::shared_ptr<ADatatype>> adatatype(m, "ADatatype", DOC(dai, ADatatype));
     py::class_<Buffer, ADatatype, std::shared_ptr<Buffer>> buffer(m, "Buffer", DOC(dai, Buffer));
@@ -260,6 +261,7 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def_readwrite("p3Offset", &RawImgFrame::Specs::p3Offset)
         ;
 
+        // TODO add RawImgFrame::CameraSettings
 
     rawNnData
         .def(py::init<>())
@@ -724,6 +726,13 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .value("AQUA", RawCameraControl::EffectMode::AQUA)
     ;
 
+    camCtrlAttr.push_back("FrameSyncMode");
+    rawCameraControlFrameSyncMode
+        .value("OFF", RawCameraControl::FrameSyncMode::OFF)
+        .value("OUTPUT", RawCameraControl::FrameSyncMode::OUTPUT)
+        .value("INPUT", RawCameraControl::FrameSyncMode::INPUT)
+    ;
+
     // Bind RawSystemInformation
     rawSystemInformation
         .def(py::init<>())
@@ -770,6 +779,9 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("getWidth", &ImgFrame::getWidth, DOC(dai, ImgFrame, getWidth))
         .def("getHeight", &ImgFrame::getHeight, DOC(dai, ImgFrame, getHeight))
         .def("getType", &ImgFrame::getType, DOC(dai, ImgFrame, getType))
+        .def("getExposureTime", &ImgFrame::getExposureTime, DOC(dai, ImgFrame, getExposureTime))
+        .def("getSensitivity", &ImgFrame::getSensitivity, DOC(dai, ImgFrame, getSensitivity))
+        .def("getLensPosition", &ImgFrame::getLensPosition, DOC(dai, ImgFrame, getLensPosition))
 
         // OpenCV Support section
         .def("setFrame", [](dai::ImgFrame& frm, py::array arr){
@@ -1080,8 +1092,11 @@ void DatatypeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("setCaptureStill", &CameraControl::setCaptureStill, py::arg("capture"), DOC(dai, CameraControl, setCaptureStill))
         .def("setStartStreaming", &CameraControl::setStartStreaming, DOC(dai, CameraControl, setStartStreaming))
         .def("setStopStreaming", &CameraControl::setStopStreaming, DOC(dai, CameraControl, setStopStreaming))
+        .def("setExternalTrigger", &CameraControl::setExternalTrigger, py::arg("numFramesBurst"), py::arg("numFramesDiscard"), DOC(dai, CameraControl, setExternalTrigger))
+        .def("setFrameSyncMode", &CameraControl::setFrameSyncMode, py::arg("mode"), DOC(dai, CameraControl, setFrameSyncMode))
         .def("setAutoFocusMode", &CameraControl::setAutoFocusMode, py::arg("mode"), DOC(dai, CameraControl, setAutoFocusMode))
         .def("setAutoFocusTrigger", &CameraControl::setAutoFocusTrigger, DOC(dai, CameraControl, setAutoFocusTrigger))
+        .def("setAutoFocusLensRange", &CameraControl::setAutoFocusLensRange, py::arg("infinityPosition"), py::arg("macroPosition"), DOC(dai, CameraControl, setAutoFocusLensRange))
         .def("setAutoFocusRegion", &CameraControl::setAutoFocusRegion, py::arg("startX"), py::arg("startY"), py::arg("width"), py::arg("height"), DOC(dai, CameraControl, setAutoFocusRegion))
         .def("setManualFocus", &CameraControl::setManualFocus, py::arg("lensPosition"), DOC(dai, CameraControl, setManualFocus))
         .def("setAutoExposureEnable", &CameraControl::setAutoExposureEnable, DOC(dai, CameraControl, setAutoExposureEnable))
