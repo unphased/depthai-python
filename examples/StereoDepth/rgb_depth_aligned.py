@@ -8,6 +8,19 @@ import depthai as dai
 rgbWeight = 0.4
 depthWeight = 0.6
 
+if 1: # scaler test
+    def scaled(input, num, denom): return (input * num - 1) // denom + 1
+    width = 4056
+    height = 3040
+    for n in range(1, 16+1):
+        for d in range (n, 63+1):
+            # additional checks for chroma (extra 1/2 scaling)
+            if d < 32 or n % 2 == 0:
+                out_w = scaled(width, n, d)
+                out_h = scaled(height, n, d)
+                # print only W multiple of 16, and (only to mitigate OpenCV assert fail) H multiple of 2
+                if out_w % 16 == 0 and out_h % 2 == 0:
+                    print(f'{width} x {height} * {n:2d}/{d:2d} --> {out_w:4d} x {out_h:4d}')
 
 def updateBlendWeights(percent_rgb):
     """
@@ -48,9 +61,10 @@ queueNames.append("disp")
 
 #Properties
 camRgb.setBoardSocket(dai.CameraBoardSocket.RGB)
-camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_12_MP)
 camRgb.setFps(fps)
-if downscaleColor: camRgb.setIspScale(2, 3)
+if downscaleColor: camRgb.setIspScale(8, 39)
+print("ISP size:", camRgb.getIspSize())
 # For now, RGB needs fixed focus to properly align with depth.
 # This value was used during calibration
 camRgb.initialControl.setManualFocus(130)
