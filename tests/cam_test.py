@@ -53,7 +53,7 @@ parser.add_argument('-cams', '--cameras', type=socket_type_pair, nargs='+',
                     "E.g: -cams rgb,m right,c . Default: rgb,c left,m right,m camd,c")
 parser.add_argument('-mres', '--mono-resolution', type=int, default=800, choices={480, 400, 720, 800},
                     help="Select mono camera resolution (height). Default: %(default)s")
-parser.add_argument('-cres', '--color-resolution', default='1080', choices={'720', '800', '1080', '4k', '5mp', '12mp'},
+parser.add_argument('-cres', '--color-resolution', default='1080', choices={'720', '800', '1080', '4k', '5mp', '12mp', '13mp'},
                     help="Select color camera resolution / height. Default: %(default)s")
 parser.add_argument('-rot', '--rotate', const='all', choices={'all', 'rgb', 'mono'}, nargs="?",
                     help="Which cameras to rotate 180 degrees. All if not filtered")
@@ -79,6 +79,13 @@ cam_socket_opts = {
     'camd' : dai.CameraBoardSocket.CAM_D,
 }
 
+cam_socket_to_name = {
+    'RGB'  : 'rgb',
+    'LEFT' : 'left',
+    'RIGHT': 'right',
+    'CAM_D': 'camd',
+}
+
 rotate = {
     'rgb'  : args.rotate in ['all', 'rgb'],
     'left' : args.rotate in ['all', 'mono'],
@@ -100,6 +107,7 @@ color_res_opts = {
     '4k':   dai.ColorCameraProperties.SensorResolution.THE_4_K,
     '5mp': dai.ColorCameraProperties.SensorResolution.THE_5_MP,
     '12mp': dai.ColorCameraProperties.SensorResolution.THE_12_MP,
+    '13mp': dai.ColorCameraProperties.SensorResolution.THE_13_MP,
 }
 
 def clamp(num, v0, v1):
@@ -165,10 +173,12 @@ if 0:
 with dai.Device(pipeline) as device:
     #print('Connected cameras:', [c.name for c in device.getConnectedCameras()])
     print('Connected cameras:')
+    cam_name = {}
     for p in device.getConnectedCameraProperties():
         print(f' -socket {p.socket.name:6}: {p.sensorName:6} {p.width:4} x {p.height:4} focus:', end='')
         print('auto ' if p.hasAutofocus else 'fixed', '- ', end='')
         print(*[type.name for type in p.supportedTypes])
+        cam_name[cam_socket_to_name[p.socket.name]] = p.sensorName
 
     print('USB speed:', device.getUsbSpeed().name)
 
@@ -178,9 +188,9 @@ with dai.Device(pipeline) as device:
     for c in cam_list:
         q[c] = device.getOutputQueue(name=c, maxSize=4, blocking=False)
         # The OpenCV window resize may produce some artifacts
-        if 0 and c == 'rgb':
+        if 1: # and c == 'rgb':
             cv2.namedWindow(c, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(c, (640, 480))
+            cv2.resizeWindow(c, (1024, 768))
         fps_host[c] = FPS()
         fps_capt[c] = FPS()
 
@@ -252,6 +262,7 @@ with dai.Device(pipeline) as device:
 
     print("Cam:", *['     ' + c.ljust(8) for c in cam_list], "[host | capture timestamp]")
 
+    capture_list = []
     while True:
         for c in cam_list:
             pkt = q[c].tryGet()
@@ -259,6 +270,20 @@ with dai.Device(pipeline) as device:
                 fps_host[c].update()
                 fps_capt[c].update(pkt.getTimestamp().total_seconds())
                 frame = pkt.getCvFrame()
+                if c in capture_list:
+                    width, height = pkt.getWidth(), pkt.getHeight()
+                    capture_file_name = ('capture_' + c + '_' + cam_name[c]
+                                     + '_' + str(width) + 'x' + str(height)
+                                    #+ '_exp_' + str(expTime)
+                                    #+ '_iso_' + str(sensIso)
+                                     + '_' + str(pkt.getSequenceNum())
+                                     + '_' + capture_time
+                                     + ".png"
+                                    )
+                    print("\nSaving:", capture_file_name)
+                    cv2.imwrite(capture_file_name, frame)
+                    capture_list.remove(c)
+
                 cv2.imshow(c, frame)
         print("\rFPS:",
               *["{:6.2f}|{:6.2f}".format(fps_host[c].get(), fps_capt[c].get()) for c in cam_list],
@@ -267,10 +292,12 @@ with dai.Device(pipeline) as device:
         key = cv2.waitKey(1)
         if key == ord('q'):
             break
-        elif False:  # key == ord('c'):
-            ctrl = dai.CameraControl()
-            ctrl.setCaptureStill(True)
-            controlQueue.send(ctrl)
+        elif key == ord('c'):
+            #ctrl = dai.CameraControl()
+            #ctrl.setCaptureStill(True)
+            #controlQueue.send(ctrl)
+            capture_list = cam_list.copy()
+            capture_time = time.strftime('%Y%m%d_%H%M%S')
         elif key == ord('t'):
             print("Autofocus trigger (and disable continuous)")
             ctrl = dai.CameraControl()
