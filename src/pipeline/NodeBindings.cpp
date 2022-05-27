@@ -342,6 +342,7 @@ void NodeBindings::bind(pybind11::module& m, void* pCallstack){
         .def_readwrite("profile", &VideoEncoderProperties::profile)
         .def_readwrite("quality", &VideoEncoderProperties::quality)
         .def_readwrite("rateCtrlMode", &VideoEncoderProperties::rateCtrlMode)
+        .def_readwrite("outputFrameSize", &VideoEncoderProperties::outputFrameSize)
         ;
 
 
@@ -427,6 +428,7 @@ void NodeBindings::bind(pybind11::module& m, void* pCallstack){
         .def_readwrite("imuSensors", &IMUProperties::imuSensors, DOC(dai, IMUProperties, imuSensors))
         .def_readwrite("batchReportThreshold", &IMUProperties::batchReportThreshold, DOC(dai, IMUProperties, batchReportThreshold))
         .def_readwrite("maxBatchReports", &IMUProperties::maxBatchReports, DOC(dai, IMUProperties, maxBatchReports))
+        .def_readwrite("enableFirmwareUpdate", &IMUProperties::enableFirmwareUpdate, DOC(dai, IMUProperties, enableFirmwareUpdate))
     ;
 
     // EdgeDetector node properties
@@ -980,6 +982,7 @@ void NodeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("setBitrate", &VideoEncoder::setBitrate, py::arg("bitrate"), DOC(dai, node, VideoEncoder, setBitrate))
         .def("setBitrateKbps", &VideoEncoder::setBitrateKbps, py::arg("bitrateKbps"), DOC(dai, node, VideoEncoder, setBitrateKbps))
         .def("setKeyframeFrequency", &VideoEncoder::setKeyframeFrequency, py::arg("freq"), DOC(dai, node, VideoEncoder, setKeyframeFrequency))
+        .def("setMaxOutputFrameSize", &VideoEncoder::setMaxOutputFrameSize, py::arg("maxFrameSize"), DOC(dai, node, VideoEncoder, setMaxOutputFrameSize))
         //.def("setMaxBitrate", &VideoEncoder::setMaxBitrate)
         .def("setNumBFrames", &VideoEncoder::setNumBFrames, py::arg("numBFrames"), DOC(dai, node, VideoEncoder, setNumBFrames))
         .def("setQuality", &VideoEncoder::setQuality, py::arg("quality"), DOC(dai, node, VideoEncoder, setQuality))
@@ -1016,6 +1019,7 @@ void NodeBindings::bind(pybind11::module& m, void* pCallstack){
         }, DOC(dai, node, VideoEncoder, getSize))
         .def("getFrameRate", &VideoEncoder::getFrameRate, DOC(dai, node, VideoEncoder, getFrameRate))
         .def("getLossless", &VideoEncoder::getLossless, DOC(dai, node, VideoEncoder, getLossless))
+        .def("getMaxOutputFrameSize", &VideoEncoder::getMaxOutputFrameSize, DOC(dai, node, VideoEncoder, getMaxOutputFrameSize))
     ;
     // ALIAS
     daiNodeModule.attr("VideoEncoder").attr("Properties") = videoEncoderProperties;
@@ -1188,6 +1192,7 @@ void NodeBindings::bind(pybind11::module& m, void* pCallstack){
         .def("getBatchReportThreshold", &IMU::getBatchReportThreshold, DOC(dai, node, IMU, getBatchReportThreshold))
         .def("setMaxBatchReports", &IMU::setMaxBatchReports, py::arg("maxBatchReports"), DOC(dai, node, IMU, setMaxBatchReports))
         .def("getMaxBatchReports", &IMU::getMaxBatchReports, DOC(dai, node, IMU, getMaxBatchReports))
+        .def("enableFirmwareUpdate", &IMU::enableFirmwareUpdate, DOC(dai, node, IMU, enableFirmwareUpdate))
         ;
     daiNodeModule.attr("IMU").attr("Properties") = imuProperties;
 
