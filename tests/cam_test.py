@@ -172,6 +172,9 @@ if 0:
 
 # Pipeline is defined, now we can connect to the device
 with dai.Device(pipeline) as device:
+    calibData = device.readCalibration2()
+    lensPosition = calibData.getLensPosition(dai.CameraBoardSocket.RGB)
+    print('calibData.getLensPosition(dai.CameraBoardSocket.RGB):', calibData.getLensPosition(dai.CameraBoardSocket.RGB))
     #print('Connected cameras:', [c.name for c in device.getConnectedCameras()])
     print('Connected cameras:')
     for p in device.getConnectedCameraProperties():
